@@ -4,6 +4,7 @@
 
 import PolicyEngine, { PRData } from "../src/policy-engine";
 import { Keypair } from "@stellar/stellar-sdk";
+import stringify from "fast-json-stable-stringify";
 
 describe("PolicyEngine", () => {
   let engine: PolicyEngine;
@@ -30,7 +31,7 @@ describe("PolicyEngine", () => {
       timestamp,
     };
 
-    const payload = JSON.stringify(payloadData);
+    const payload = stringify(payloadData);
     const signature = keypair.sign(Buffer.from(payload)).toString("hex");
 
     return {

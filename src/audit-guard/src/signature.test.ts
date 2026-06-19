@@ -4,6 +4,7 @@
 
 import PolicyEngine, { PRData } from "./policy-engine";
 import { Keypair } from "@stellar/stellar-sdk";
+import stringify from "fast-json-stable-stringify";
 
 describe("Relayer Signature Verification", () => {
   let engine: PolicyEngine;
@@ -49,7 +50,7 @@ describe("Relayer Signature Verification", () => {
       timestamp,
     };
 
-    const payload = JSON.stringify(payloadData);
+    const payload = stringify(payloadData);
     const signature = keypair.sign(Buffer.from(payload)).toString("hex");
 
     return {

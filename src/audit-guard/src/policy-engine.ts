@@ -7,6 +7,7 @@ import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { Keypair } from "@stellar/stellar-sdk";
+import stringify from "fast-json-stable-stringify";
 
 export interface PRData {
   pull_request: {
@@ -400,7 +401,10 @@ export class PolicyEngine {
     }
 
     // 2. Check if relayer is authorized
-    const authorizedRelayers = (process.env.AUTHORIZED_ADDRESSES || "").split(",").filter(Boolean);
+    const authorizedRelayers = (process.env.AUTHORIZED_ADDRESSES || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (authorizedRelayers.length === 0) {
       violations.push({
         rule: "RELAYER_UNAUTHORIZED",
@@ -471,9 +475,8 @@ export class PolicyEngine {
       timestamp: prData.timestamp,
     };
 
-    // Use deterministic stringification
-    // Note: For production use, a library like 'fast-json-stable-stringify' is recommended.
-    return JSON.stringify(payloadData);
+    // Use deterministic stringification for cryptographic verification
+    return stringify(payloadData);
   }
 }
 
