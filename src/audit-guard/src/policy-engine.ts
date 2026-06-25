@@ -103,10 +103,7 @@ export class PolicyEngine {
     fs.writeFileSync(tempInput, JSON.stringify(prData, null, 2));
 
     try {
-      const command = `opa eval -d ${this.policiesDir} -i ${tempInput} \
-        -b 'data.pr.compliance.deny' \
-        -b 'data.pr.compliance.warning' \
-        -b 'data.pr.compliance.compliance_summary'`;
+      const command = `opa eval --format json --data ${this.policiesDir} --input ${tempInput} 'data.pr.compliance'`;
 
       const output = execSync(command).toString();
       const result = JSON.parse(output);
@@ -283,11 +280,10 @@ export class PolicyEngine {
    * Parse OPA eval output
    */
   private parseOPAResult(opaOutput: any): EvaluationResult {
-    const violations: PolicyViolation[] = opaOutput.result?.[0]?.bindings
-      ?.deny || [];
-    const warnings: PolicyViolation[] = opaOutput.result?.[0]?.bindings
-      ?.warning || [];
-    const summary = opaOutput.result?.[0]?.bindings?.compliance_summary?.[0] || {};
+    const value = opaOutput.result?.[0]?.expressions?.[0]?.value || {};
+    const violations: PolicyViolation[] = value.deny || [];
+    const warnings: PolicyViolation[] = value.warning || [];
+    const summary = value.compliance_summary?.[0] || {};
 
     const high_severity_violations = violations.filter(
       (v) =>
