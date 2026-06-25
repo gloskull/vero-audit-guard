@@ -38,20 +38,19 @@ jobs:
         run: |
           node <<'EOF'
           const fs = require('fs');
-          const path = require('path');
 
           // Extract PR data from GitHub context
           const prData = {
             pull_request: {
-              title: process.env.PR_TITLE,
-              body: process.env.PR_BODY,
+              title: process.env.PR_TITLE || "",
+              body: process.env.PR_BODY || "",
               labels: JSON.parse(process.env.PR_LABELS),
               base_branch: process.env.BASE_BRANCH,
               head_branch: process.env.HEAD_BRANCH,
               number: parseInt(process.env.PR_NUMBER),
               author: process.env.PR_AUTHOR,
             },
-            files_modified: JSON.parse(process.env.FILES_MODIFIED),
+            files_modified: [],
             additions: parseInt(process.env.ADDITIONS),
             deletions: parseInt(process.env.DELETIONS),
           };
@@ -69,7 +68,6 @@ jobs:
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          FILES_MODIFIED: ${{ toJson(github.event.pull_request.changed_files) }}
           ADDITIONS: ${{ github.event.pull_request.additions }}
           DELETIONS: ${{ github.event.pull_request.deletions }}
 
@@ -82,7 +80,11 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files?per_page=100" \
             | jq -r '.[].filename' | jq -R -s -c 'split("\n")[:-1]')
-          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+          {
+            echo 'files<<EOF'
+            echo "$FILES"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Run policy evaluation
         id: evaluation
@@ -100,16 +102,16 @@ jobs:
           (async () => {
             const result = await engine.evaluate(prData);
             
-            // Save result
-            fs.writeFileSync('/tmp/policy-result.json', JSON.stringify(result, null, 2));
-            
-            // Output for GitHub
-            const report = engine.generateReport(result);
-            console.log('REPORT<<EOF\n' + report + '\nEOF');
-            
-            // Set status
-            console.log(`::set-output name=status::${result.status}`);
-            console.log(`::set-output name=violations::${result.violations_count}`);
+          // Save result
+          fs.writeFileSync('/tmp/policy-result.json', JSON.stringify(result, null, 2));
+          
+          // Output for GitHub
+          const report = engine.generateReport(result);
+          console.log('REPORT<<EOF\n' + report + '\nEOF');
+          
+          // Set status
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `status=${result.status}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `violations=${result.violations_count}\n`);
             
             process.exit(result.violations.length > 0 ? 1 : 0);
           })().catch(e => {

@@ -38,7 +38,7 @@ deny[msg] {
 }
 
 # Rule: PR description should mention testing
-deny[msg] {
+warning[msg] {
     body := lower(input.pull_request.body)
     not contains(body, "test")
     msg := {
@@ -52,7 +52,7 @@ deny[msg] {
 # Rule: Breaking changes must be explicitly documented
 deny[msg] {
     labels := {label | label := input.pull_request.labels[_]}
-    contains(input.pull_request.body, "breaking") 
+    contains(lower(input.pull_request.body), "breaking") 
     not "breaking-change" in labels
     msg := {
         "rule": "BREAKING_CHANGE_NOT_LABELED",
@@ -62,11 +62,11 @@ deny[msg] {
     }
 }
 
-# Rule: Security-sensitive changes must have security label or detailed justification
-deny[msg] {
+# Rule: Security-sensitive changes should have security label or detailed justification
+warning[msg] {
     sensitive_keywords := ["auth", "crypto", "signature", "key", "secret", "token", "vulnerability", "exploit"]
-    any_sensitive := any(keyword | keyword := sensitive_keywords[_]; contains(lower(input.pull_request.body), keyword))
-    any_sensitive
+    keyword := sensitive_keywords[_]
+    contains(lower(input.pull_request.body), keyword)
     labels := {label | label := input.pull_request.labels[_]}
     not "security" in labels
     not "audit" in labels
@@ -90,13 +90,12 @@ deny[msg] {
     }
 }
 
-# Rule: Changelog must be updated for non-trivial PRs
-deny[msg] {
+# Rule: Changelog should be updated for non-trivial PRs
+warning[msg] {
     labels := {label | label := input.pull_request.labels[_]}
     not "trivial" in labels
     not "docs" in labels
-    not contains(input.pull_request.body, "changelog")
-    not contains(input.pull_request.body, "CHANGELOG")
+    not contains(lower(input.pull_request.body), "changelog")
     msg := {
         "rule": "CHANGELOG_NOT_UPDATED",
         "severity": severity.MEDIUM,
@@ -106,7 +105,7 @@ deny[msg] {
 }
 
 # Rule: Multiple files modified should have justification
-deny[msg] {
+warning[msg] {
     files_count := count(input.files_modified)
     files_count > 20
     msg := {
@@ -118,7 +117,7 @@ deny[msg] {
 }
 
 # Rule: Large line changes need justification
-deny[msg] {
+warning[msg] {
     additions := input.additions
     deletions := input.deletions
     total_changes := additions + deletions

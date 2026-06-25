@@ -15,8 +15,8 @@ unsafe_packages := [
 deny[msg] {
     added_dep := input.dependencies_added[_]
     pkg_name := added_dep.name
-    any_unsafe := any(unsafe | unsafe := unsafe_packages[_]; unsafe == pkg_name)
-    any_unsafe
+    unsafe := unsafe_packages[_]
+    unsafe == pkg_name
     msg := {
         "rule": "UNSAFE_PACKAGE_ADDED",
         "severity": severity.CRITICAL,
