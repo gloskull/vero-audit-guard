@@ -158,7 +158,8 @@ export class PolicyEngine {
       const command = `opa eval -d ${this.policiesDir} -i ${tempInput} \
         -b 'data.pr.compliance.deny' \
         -b 'data.pr.compliance.warning' \
-        -b 'data.pr.compliance.compliance_summary'`;
+        -b 'data.pr.compliance.compliance_summary' \
+        -b 'data.pr.dependencies.deny'`;
 
       const output = execSync(command).toString();
       const result = JSON.parse(output);
@@ -292,6 +293,59 @@ export class PolicyEngine {
       });
     }
 
+    // Dependency checks
+    if (prData.dependencies_added) {
+      const unsafePackages = ["eval", "exec", "child_process"];
+      const approvedDependencies = [
+        "stellar-sdk",
+        "lodash",
+        "axios",
+        "dotenv",
+        "express",
+        "typescript",
+        "jest",
+        "ts-jest",
+        "@types/node",
+        "esbuild",
+        "react",
+        "react-dom",
+        "@types/react",
+        "@types/react-dom",
+      ];
+
+      for (const dep of prData.dependencies_added) {
+        // Unsafe packages check
+        if (unsafePackages.includes(dep.name)) {
+          violations.push({
+            rule: "UNSAFE_PACKAGE_ADDED",
+            severity: "CRITICAL",
+            message: `❌ Unsafe package '${dep.name}' cannot be added`,
+            detail: "This package has known security risks. Use approved alternatives or document exception.",
+          });
+        }
+
+        // Unvetted dependency check
+        if (!approvedDependencies.includes(dep.name) && !dep.is_dev_dependency) {
+          violations.push({
+            rule: "UNVETTED_DEPENDENCY",
+            severity: "HIGH",
+            message: `⚠️  Unvetted dependency: '${dep.name}'`,
+            detail: `New production dependency '${dep.name}' requires security review. Add to approved list or mark as exception.`,
+          });
+        }
+
+        // Version pinning check
+        if (dep.version.startsWith("^") || dep.version.startsWith("~")) {
+          warnings.push({
+            rule: "DEPENDENCY_VERSION_NOT_PINNED",
+            severity: "MEDIUM",
+            message: `⚠️  Dependency '${dep.name}' version not pinned`,
+            detail: `Use exact version (e.g., '${dep.version.substring(1)}') instead of '${dep.version}' for reproducible builds`,
+          });
+        }
+      }
+    }
+
     // Long title warning
     if (prData.pull_request.title.length > 100) {
       warnings.push({
@@ -335,8 +389,12 @@ export class PolicyEngine {
    * Parse OPA eval output
    */
   private parseOPAResult(opaOutput: any): EvaluationResult {
-    const violations: PolicyViolation[] = opaOutput.result?.[0]?.bindings
+    const complianceViolations: PolicyViolation[] = opaOutput.result?.[0]?.bindings
       ?.deny || [];
+    const dependencyViolations: PolicyViolation[] = opaOutput.result?.[0]?.bindings
+      ?.["data.pr.dependencies.deny"] || [];
+    const violations = [...complianceViolations, ...dependencyViolations];
+
     const warnings: PolicyViolation[] = opaOutput.result?.[0]?.bindings
       ?.warning || [];
     const summary = opaOutput.result?.[0]?.bindings?.compliance_summary?.[0] || {};

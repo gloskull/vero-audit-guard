@@ -67,6 +67,10 @@ approved_dependencies := [
     "ts-jest",
     "@types/node",
     "esbuild",
+    "react",
+    "react-dom",
+    "@types/react",
+    "@types/react-dom",
 ]
 
 # Rule: Outdated dependencies (encourage updates)
