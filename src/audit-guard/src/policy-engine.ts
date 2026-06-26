@@ -139,6 +139,24 @@ export class PolicyEngine {
       }
     }
 
+    // Perform relayer signature verification
+    const signatureViolations = this.verifyRelayerSignature(prData);
+    if (signatureViolations.length > 0) {
+      result.violations = [...signatureViolations, ...result.violations];
+      result.status = "NON_COMPLIANT";
+      result.violations_count = result.violations.length;
+      result.high_severity_violations = result.violations.filter(
+        (v) => v.severity === "CRITICAL" || v.severity === "HIGH"
+      );
+
+      // Update summary if it's already defined
+      if (result.summary) {
+        const vCount = result.violations.length;
+        const wCount = result.warnings.length;
+        result.summary = `❌ ${vCount} violation(s) ${wCount > 0 ? `⚠️  ${wCount} warning(s)` : ""}`.trim();
+      }
+    }
+
     // Add security tip to result
     result.security_tip = this.getSecurityTip(prData);
 

@@ -9,6 +9,10 @@ import PolicyEngine, { PRData } from "./policy-engine";
 import LogicErrorDetector, { LogicScanOptions } from "./logic-detector";
 import EventLogScanner from "./event-log-scanner";
 import { OnCallRoster } from "./oncall-roster";
+import {
+  evaluateSecurityGateFromJson,
+  DEFAULT_SEVERITY_THRESHOLD,
+} from "./security-gate";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -133,7 +137,12 @@ async function checkPR(): Promise<void> {
   const result = await engine.evaluate(prData);
 
   // Output result
-  console.log(JSON.stringify(result, null, 2));
+  const jsonOutput = JSON.stringify(result, null, 2);
+  console.log(jsonOutput);
+
+  if (process.env.RESULT_JSON_FILE) {
+    fs.writeFileSync(process.env.RESULT_JSON_FILE, jsonOutput);
+  }
 
   // Output markdown report to file if specified
   if (process.env.REPORT_FILE) {
