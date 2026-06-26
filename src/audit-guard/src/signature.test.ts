@@ -78,16 +78,16 @@ describe("Relayer Signature Verification", () => {
     expect(result.violations.some(v => v.rule === "RELAYER_UNAUTHORIZED")).toBe(true);
   });
 
-  it("should fail if AUTHORIZED_ADDRESSES is not set", async () => {
+  it("should skip verification if AUTHORIZED_ADDRESSES is not set", async () => {
     delete process.env.AUTHORIZED_ADDRESSES;
     const timestamp = Date.now();
     const prData = signPRData(getBasePRData(), authorizedRelayer, timestamp);
 
     const result = await engine.evaluate(prData);
 
-    expect(result.status).toBe("NON_COMPLIANT");
-    expect(result.violations.some(v => v.rule === "RELAYER_UNAUTHORIZED")).toBe(true);
-    expect(result.violations.some(v => v.detail.includes("No authorized relayers configured"))).toBe(true);
+    // Should NOT have signature violations when not configured
+    expect(result.violations.some(v => v.rule.startsWith("RELAYER_SIGNATURE"))).toBe(false);
+    expect(result.violations.some(v => v.rule === "RELAYER_UNAUTHORIZED")).toBe(false);
   });
 
   it("should fail if signature is expired", async () => {

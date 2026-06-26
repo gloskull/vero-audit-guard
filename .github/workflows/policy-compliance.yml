@@ -35,8 +35,19 @@ jobs:
         run: npm run build
         working-directory: src/audit-guard
 
-      - name: Extract PR data and run policy check
-        id: policy-check
+      - name: Get list of changed files
+        id: changed-files
+        run: |
+          # Get list of changed files from GitHub API
+          FILES=$(curl -s \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files?per_page=100" \
+            | jq -r '.[].filename' | jq -R -s -c 'split("\n")[:-1]')
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+
+      - name: Extract PR data
+        id: pr-data
         run: |
           node <<'EOF'
           const fs = require('fs');
@@ -60,9 +71,8 @@ jobs:
 
           // Write PR data to temp file
           fs.writeFileSync('/tmp/pr-data.json', JSON.stringify(prData, null, 2));
-          console.log('✅ PR data extracted and saved');
+          console.log('✅ PR data extracted and saved to /tmp/pr-data.json');
           EOF
-
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
@@ -71,68 +81,32 @@ jobs:
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          FILES_MODIFIED: ${{ toJson(github.event.pull_request.changed_files) }}
+          FILES_MODIFIED: ${{ steps.changed-files.outputs.files }}
           ADDITIONS: ${{ github.event.pull_request.additions }}
           DELETIONS: ${{ github.event.pull_request.deletions }}
-          MAINTENANCE_MODE: ${{ vars.MAINTENANCE_MODE }}
-          MAINTENANCE_MESSAGE: ${{ vars.MAINTENANCE_MESSAGE }}
-
-      - name: Get list of changed files
-        id: changed-files
-        run: |
-          # Get list of changed files from GitHub API
-          FILES=$(curl -s \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files?per_page=100" \
-            | jq -r '.[].filename' | jq -R -s -c 'split("\n")[:-1]')
-          echo "files=$FILES" >> "$GITHUB_OUTPUT"
 
       - name: Run policy evaluation
         id: evaluation
         run: |
-          node <<'EOF'
-          const PolicyEngine = require('./dist/policy-engine').default;
-          const fs = require('fs');
+          npm run check-pr
           
-          // Load PR data
-          const prData = JSON.parse(fs.readFileSync('/tmp/pr-data.json', 'utf-8'));
-          prData.files_modified = ${{ steps.changed-files.outputs.files }};
-
-          // Add maintenance info from environment
-          if (process.env.MAINTENANCE_MODE === 'true') {
-            prData.maintenance_mode = true;
-            if (process.env.MAINTENANCE_MESSAGE) {
-              prData.maintenance_message = process.env.MAINTENANCE_MESSAGE;
-            }
-          }
+          # Set outputs for next steps
+          STATUS=$(jq -r '.status' /tmp/policy-result.json)
+          VIOLATIONS=$(jq -r '.violations_count' /tmp/policy-result.json)
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "violations=$VIOLATIONS" >> "$GITHUB_OUTPUT"
           
-          // Evaluate
-          const engine = new PolicyEngine();
-          (async () => {
-            const result = await engine.evaluate(prData);
-            
-            // Save result
-            fs.writeFileSync('/tmp/policy-result.json', JSON.stringify(result, null, 2));
-            
-            // Output for GitHub
-            const report = engine.generateReport(result);
-            console.log('REPORT<<EOF\n' + report + '\nEOF');
-            
-            // Set status
-            const fsOutput = require('fs');
-            fsOutput.appendFileSync(process.env.GITHUB_OUTPUT, `status=${result.status}\n`);
-            fsOutput.appendFileSync(process.env.GITHUB_OUTPUT, `violations=${result.violations_count}\n`);
-            
-            process.exit(result.violations.length > 0 ? 1 : 0);
-          })().catch(e => {
-            console.error(e);
-            process.exit(1);
-          });
-          EOF
+          if [ "$STATUS" = "NON_COMPLIANT" ]; then
+             echo "❌ Policy violations detected."
+             exit 1
+          fi
         env:
+          PR_DATA_FILE: /tmp/pr-data.json
+          RESULT_JSON_FILE: /tmp/policy-result.json
+          REPORT_FILE: /tmp/policy-report.md
           MAINTENANCE_MODE: ${{ vars.MAINTENANCE_MODE }}
           MAINTENANCE_MESSAGE: ${{ vars.MAINTENANCE_MESSAGE }}
+          AUTHORIZED_ADDRESSES: ${{ secrets.AUTHORIZED_RELAYERS }}
         working-directory: src/audit-guard
 
       - name: Comment PR with policy result

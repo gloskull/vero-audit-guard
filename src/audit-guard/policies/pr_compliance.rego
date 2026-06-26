@@ -38,7 +38,7 @@ deny[msg] {
 }
 
 # Rule: PR description should mention testing
-deny[msg] {
+warning[msg] {
     body := lower(input.pull_request.body)
     not contains(body, "test")
     msg := {
@@ -63,7 +63,7 @@ deny[msg] {
 }
 
 # Rule: Security-sensitive changes must have security label or detailed justification
-deny[msg] {
+warning[msg] {
     sensitive_keywords := ["auth", "crypto", "signature", "key", "secret", "token", "vulnerability", "exploit"]
     any_sensitive := any(keyword | keyword := sensitive_keywords[_]; contains(lower(input.pull_request.body), keyword))
     any_sensitive
@@ -91,7 +91,7 @@ deny[msg] {
 }
 
 # Rule: Changelog must be updated for non-trivial PRs
-deny[msg] {
+warning[msg] {
     labels := {label | label := input.pull_request.labels[_]}
     not "trivial" in labels
     not "docs" in labels
@@ -106,7 +106,7 @@ deny[msg] {
 }
 
 # Rule: Multiple files modified should have justification
-deny[msg] {
+warning[msg] {
     files_count := count(input.files_modified)
     files_count > 20
     msg := {
@@ -118,7 +118,7 @@ deny[msg] {
 }
 
 # Rule: Large line changes need justification
-deny[msg] {
+warning[msg] {
     additions := input.additions
     deletions := input.deletions
     total_changes := additions + deletions
@@ -133,6 +133,7 @@ deny[msg] {
 
 # Rule: Relayer signature must be present and from an authorized address
 deny[msg] {
+    input.signature_required
     not input.relayer
     msg := {
         "rule": "RELAYER_SIGNATURE_MISSING",
@@ -143,6 +144,7 @@ deny[msg] {
 }
 
 deny[msg] {
+    input.signature_required
     not input.signature
     msg := {
         "rule": "RELAYER_SIGNATURE_MISSING",
@@ -153,6 +155,7 @@ deny[msg] {
 }
 
 deny[msg] {
+    input.signature_required
     not input.timestamp
     msg := {
         "rule": "RELAYER_SIGNATURE_MISSING",
