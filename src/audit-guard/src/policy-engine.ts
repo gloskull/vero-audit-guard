@@ -174,7 +174,15 @@ export class PolicyEngine {
    */
   private async evaluateWithOPA(prData: PRData): Promise<EvaluationResult> {
     const tempInput = path.join("/tmp", `opa-input-${Date.now()}.json`);
-    fs.writeFileSync(tempInput, JSON.stringify(prData, null, 2));
+
+    // Add signature_required flag based on AUTHORIZED_ADDRESSES
+    const authorizedRelayers = (process.env.AUTHORIZED_ADDRESSES || "").split(",").filter(Boolean);
+    const input = {
+      ...prData,
+      signature_required: authorizedRelayers.length > 0
+    };
+
+    fs.writeFileSync(tempInput, JSON.stringify(input, null, 2));
 
     try {
       const command = `opa eval -d ${this.policiesDir} -i ${tempInput} \
@@ -197,6 +205,19 @@ export class PolicyEngine {
   private async evaluateWithoutOPA(prData: PRData): Promise<EvaluationResult> {
     const violations: PolicyViolation[] = [];
     const warnings: PolicyViolation[] = [];
+
+    // Protect main branch from direct commits (via metadata)
+    if (
+      prData.pull_request.base_branch === "main" &&
+      prData.pull_request.head_branch === "main"
+    ) {
+      violations.push({
+        rule: "DIRECT_TO_MAIN_PROTECTION",
+        severity: "CRITICAL",
+        message: "❌ Direct commits to main branch not allowed",
+        detail: "Use feature branches and submit PRs for review",
+      });
+    }
 
     // PR Title checks
     if (prData.pull_request.title === "") {
@@ -456,6 +477,12 @@ export class PolicyEngine {
   private verifyRelayerSignature(prData: PRData): PolicyViolation[] {
     const violations: PolicyViolation[] = [];
 
+    // Only verify if authorized relayers are configured
+    const authorizedRelayers = (process.env.AUTHORIZED_ADDRESSES || "").split(",").filter(Boolean);
+    if (authorizedRelayers.length === 0) {
+      return violations;
+    }
+
     // 1. Check if signature fields are present
     if (!prData.relayer || !prData.signature || !prData.timestamp) {
       violations.push({
@@ -468,15 +495,7 @@ export class PolicyEngine {
     }
 
     // 2. Check if relayer is authorized
-    const authorizedRelayers = (process.env.AUTHORIZED_ADDRESSES || "").split(",").filter(Boolean);
-    if (authorizedRelayers.length === 0) {
-      violations.push({
-        rule: "RELAYER_UNAUTHORIZED",
-        severity: "CRITICAL",
-        message: "❌ Relayer not authorized",
-        detail: "No authorized relayers configured in AUTHORIZED_ADDRESSES environment variable",
-      });
-    } else if (!authorizedRelayers.includes(prData.relayer)) {
+    if (!authorizedRelayers.includes(prData.relayer)) {
       violations.push({
         rule: "RELAYER_UNAUTHORIZED",
         severity: "CRITICAL",
