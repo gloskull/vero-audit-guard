@@ -13,6 +13,7 @@ permissions:
   security-events: write
   pull-requests: write
   issues: write
+  statuses: write
 
 jobs:
   scanner-engine:
